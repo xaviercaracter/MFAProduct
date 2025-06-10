@@ -1,5 +1,17 @@
 ```mermaid
 flowchart TD
+    Start[New User] --> CreateAccount[Create Account]
+    CreateAccount --> CollectInfo[Collect User Information]
+    CollectInfo --> ValidateInfo{Validate Information}
+    
+    ValidateInfo -->|Invalid| ShowError[Show Validation Errors]
+    ShowError --> CollectInfo
+    
+    ValidateInfo -->|Valid| HashPassword[Hash Password]
+    HashPassword --> StoreUser[Store User in DB]
+    StoreUser --> AccountCreated[Account Created]
+    AccountCreated --> B
+    
     A[User] --> B{Login Attempt}
     B -->|Enter Credentials| C[Validate Email/Password]
     
@@ -34,20 +46,31 @@ flowchart TD
     T --> B
 
     subgraph Database
+        StoreUser
         I
         N
     end
 
     subgraph Security
+        HashPassword
         C
         K
         R
     end
 
+    subgraph User Management
+        CreateAccount
+        CollectInfo
+        ValidateInfo
+    end
+
+    style Start fill:#f9f,stroke:#333,stroke-width:2px
     style A fill:#f9f,stroke:#333,stroke-width:2px
     style B fill:#bbf,stroke:#333,stroke-width:2px
     style C fill:#bfb,stroke:#333,stroke-width:2px
     style F fill:#fbb,stroke:#333,stroke-width:2px
     style Q fill:#bfb,stroke:#333,stroke-width:2px
     style T fill:#fbb,stroke:#333,stroke-width:2px
+    style CreateAccount fill:#bfb,stroke:#333,stroke-width:2px
+    style HashPassword fill:#bfb,stroke:#333,stroke-width:2px
 ``` 
