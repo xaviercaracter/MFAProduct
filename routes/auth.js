@@ -113,6 +113,51 @@ router.post('/verify', async (req, res) => {
     }
 });
 
+// Resend verification code
+router.post('/resend-code', async (req, res) => {
+    try {
+        const { email } = req.body;
+        
+        // Find user
+        const user = await User.findOne({ where: { email } });
+        if (!user) {
+            return res.status(401).json({ message: 'Invalid user' });
+        }
+
+        // Check if account is locked
+        if (user.isLocked) {
+            return res.status(401).json({ message: 'Account is locked. Please contact support.' });
+        }
+
+        // Invalidate any existing unused verification codes for this user
+        await VerificationCode.update(
+            { isUsed: true },
+            {
+                where: {
+                    userId: user.id,
+                    isUsed: false
+                }
+            }
+        );
+
+        // Generate and store new verification code
+        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+        await VerificationCode.create({
+            userId: user.id,
+            code: verificationCode,
+            expiresAt: new Date(Date.now() + 5 * 60 * 1000) // 5 minutes
+        });
+
+        // In production, send this via Twilio
+        console.log(`New verification code for ${email}: ${verificationCode}`);
+
+        res.json({ message: 'New verification code sent' });
+    } catch (error) {
+        console.error('Resend code error:', error);
+        res.status(500).json({ message: 'An error occurred while resending the code' });
+    }
+});
+
 // Refresh session
 router.post('/refresh', async (req, res) => {
     try {
