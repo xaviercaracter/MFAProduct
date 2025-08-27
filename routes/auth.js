@@ -6,11 +6,55 @@ const User = require('../models/User');
 const VerificationCode = require('../models/VerificationCode');
 const { Op } = require('sequelize');
 
+// Rate limiting for registration attempts
+const registerLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 5, // 5 attempts
+    message: { message: 'Too many registration attempts, please try again later' }
+});
+
 // Rate limiting for login attempts
 const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 3, // 3 attempts
     message: { message: 'Too many login attempts, please try again later' }
+});
+
+// Register route
+router.post('/register', registerLimiter, async (req, res) => {
+    try {
+        const { firstName, lastName, email, phoneNumber, password } = req.body;
+
+        // Check if user already exists
+        const existingUser = await User.findOne({ where: { email } });
+        if (existingUser) {
+            return res.status(400).json({ message: 'User with this email already exists' });
+        }
+
+        // Create new user
+        const user = await User.create({
+            firstName,
+            lastName,
+            email,
+            phoneNumber,
+            password
+        });
+
+        console.log(`New user registered: ${email}`);
+
+        res.status(201).json({ 
+            message: 'Account created successfully',
+            user: {
+                id: user.id,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                email: user.email
+            }
+        });
+    } catch (error) {
+        console.error('Registration error:', error);
+        res.status(500).json({ message: 'An error occurred during registration' });
+    }
 });
 
 // Login route
