@@ -4,7 +4,11 @@ const { SessionManager } = require('../middleware/sessionManager');
 const rateLimit = require('express-rate-limit');
 const User = require('../models/User');
 const VerificationCode = require('../models/VerificationCode');
+const TwilioService = require('../services/twilioService');
 const { Op } = require('sequelize');
+
+// Initialize Twilio service
+const twilioService = new TwilioService();
 
 // Rate limiting for registration attempts
 const registerLimiter = rateLimit({
@@ -41,6 +45,15 @@ router.post('/register', registerLimiter, async (req, res) => {
         });
 
         console.log(`New user registered: ${email}`);
+
+        // Send welcome SMS
+        try {
+            const formattedPhone = twilioService.formatPhoneNumber(phoneNumber);
+            await twilioService.sendWelcomeMessage(formattedPhone, firstName);
+        } catch (smsError) {
+            console.error('Welcome SMS sending failed:', smsError.message);
+            // Don't fail registration if SMS fails
+        }
 
         res.status(201).json({ 
             message: 'Account created successfully',
@@ -103,8 +116,16 @@ router.post('/login', loginLimiter, async (req, res) => {
             expiresAt: new Date(Date.now() + 5 * 60 * 1000) // 5 minutes
         });
 
-        // In production, send this via Twilio
-        console.log(`Verification code for ${email}: ${verificationCode}`);
+        // Send verification code via Twilio
+        try {
+            const formattedPhone = twilioService.formatPhoneNumber(user.phoneNumber);
+            await twilioService.sendVerificationCode(formattedPhone, verificationCode);
+            console.log(`Verification code sent via SMS to ${formattedPhone}`);
+        } catch (smsError) {
+            console.error('SMS sending failed:', smsError.message);
+            // Still log the code for development/testing
+            console.log(`Verification code for ${email}: ${verificationCode}`);
+        }
 
         res.json({ message: 'Verification code sent' });
     } catch (error) {
@@ -192,8 +213,16 @@ router.post('/resend-code', async (req, res) => {
             expiresAt: new Date(Date.now() + 5 * 60 * 1000) // 5 minutes
         });
 
-        // In production, send this via Twilio
-        console.log(`New verification code for ${email}: ${verificationCode}`);
+        // Send new verification code via Twilio
+        try {
+            const formattedPhone = twilioService.formatPhoneNumber(user.phoneNumber);
+            await twilioService.sendVerificationCode(formattedPhone, verificationCode);
+            console.log(`New verification code sent via SMS to ${formattedPhone}`);
+        } catch (smsError) {
+            console.error('SMS sending failed:', smsError.message);
+            // Still log the code for development/testing
+            console.log(`New verification code for ${email}: ${verificationCode}`);
+        }
 
         res.json({ message: 'New verification code sent' });
     } catch (error) {
