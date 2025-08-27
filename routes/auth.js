@@ -8,7 +8,7 @@ const { Op } = require('sequelize');
 
 // Rate limiting for registration attempts
 const registerLimiter = rateLimit({
-    windowMs: 60 * 60 * 1000, // 1 hour
+    windowMs: 20 * 60 * 1000, // 20 minutes
     max: 5, // 5 attempts
     message: { message: 'Too many registration attempts, please try again later' }
 });
