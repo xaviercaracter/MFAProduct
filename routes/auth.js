@@ -5,10 +5,12 @@ const rateLimit = require('express-rate-limit');
 const User = require('../models/User');
 const VerificationCode = require('../models/VerificationCode');
 const TwilioService = require('../services/twilioService');
+const EmailService = require('../services/emailService');
 const { Op } = require('sequelize');
 
-// Initialize Twilio service
+// Initialize services
 const twilioService = new TwilioService();
+const emailService = new EmailService();
 
 // Rate limiting for registration attempts
 const registerLimiter = rateLimit({
@@ -46,13 +48,12 @@ router.post('/register', registerLimiter, async (req, res) => {
 
         console.log(`New user registered: ${email}`);
 
-        // Send welcome SMS
+        // Send welcome email
         try {
-            const formattedPhone = twilioService.formatPhoneNumber(phoneNumber);
-            await twilioService.sendWelcomeMessage(formattedPhone, firstName);
-        } catch (smsError) {
-            console.error('Welcome SMS sending failed:', smsError.message);
-            // Don't fail registration if SMS fails
+            await emailService.sendWelcomeEmail(email, firstName);
+        } catch (emailError) {
+            console.error('Welcome email sending failed:', emailError.message);
+            // Don't fail registration if email fails
         }
 
         res.status(201).json({ 
@@ -116,15 +117,23 @@ router.post('/login', loginLimiter, async (req, res) => {
             expiresAt: new Date(Date.now() + 5 * 60 * 1000) // 5 minutes
         });
 
-        // Send verification code via Twilio
+        // Send verification code via email (fallback to SMS if email fails)
         try {
-            const formattedPhone = twilioService.formatPhoneNumber(user.phoneNumber);
-            await twilioService.sendVerificationCode(formattedPhone, verificationCode);
-            console.log(`Verification code sent via SMS to ${formattedPhone}`);
-        } catch (smsError) {
-            console.error('SMS sending failed:', smsError.message);
-            // Still log the code for development/testing
-            console.log(`Verification code for ${email}: ${verificationCode}`);
+            await emailService.sendVerificationCode(email, verificationCode, user.firstName);
+            console.log(`Verification code sent via email to ${email}`);
+        } catch (emailError) {
+            console.error('Email sending failed:', emailError.message);
+            
+            // Fallback to SMS if available
+            try {
+                const formattedPhone = twilioService.formatPhoneNumber(user.phoneNumber);
+                await twilioService.sendVerificationCode(formattedPhone, verificationCode);
+                console.log(`Verification code sent via SMS to ${formattedPhone} (email fallback)`);
+            } catch (smsError) {
+                console.error('SMS fallback also failed:', smsError.message);
+                // Still log the code for development/testing
+                console.log(`Verification code for ${email}: ${verificationCode}`);
+            }
         }
 
         res.json({ message: 'Verification code sent' });
@@ -213,15 +222,23 @@ router.post('/resend-code', async (req, res) => {
             expiresAt: new Date(Date.now() + 5 * 60 * 1000) // 5 minutes
         });
 
-        // Send new verification code via Twilio
+        // Send new verification code via email (fallback to SMS if email fails)
         try {
-            const formattedPhone = twilioService.formatPhoneNumber(user.phoneNumber);
-            await twilioService.sendVerificationCode(formattedPhone, verificationCode);
-            console.log(`New verification code sent via SMS to ${formattedPhone}`);
-        } catch (smsError) {
-            console.error('SMS sending failed:', smsError.message);
-            // Still log the code for development/testing
-            console.log(`New verification code for ${email}: ${verificationCode}`);
+            await emailService.sendVerificationCode(email, verificationCode, user.firstName);
+            console.log(`New verification code sent via email to ${email}`);
+        } catch (emailError) {
+            console.error('Email sending failed:', emailError.message);
+            
+            // Fallback to SMS if available
+            try {
+                const formattedPhone = twilioService.formatPhoneNumber(user.phoneNumber);
+                await twilioService.sendVerificationCode(formattedPhone, verificationCode);
+                console.log(`New verification code sent via SMS to ${formattedPhone} (email fallback)`);
+            } catch (smsError) {
+                console.error('SMS fallback also failed:', smsError.message);
+                // Still log the code for development/testing
+                console.log(`New verification code for ${email}: ${verificationCode}`);
+            }
         }
 
         res.json({ message: 'New verification code sent' });

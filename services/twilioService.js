@@ -2,14 +2,31 @@ const twilio = require('twilio');
 
 class TwilioService {
     constructor() {
+        if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
+            console.warn('Twilio credentials not found. SMS sending will be disabled.');
+            this.isEnabled = false;
+            return;
+        }
+
         this.client = twilio(
             process.env.TWILIO_ACCOUNT_SID,
             process.env.TWILIO_AUTH_TOKEN
         );
         this.fromNumber = process.env.TWILIO_PHONE_NUMBER;
+        this.isEnabled = true;
+
+        if (!this.fromNumber) {
+            console.warn('TWILIO_PHONE_NUMBER not set. SMS sending will be disabled.');
+            this.isEnabled = false;
+        }
     }
 
     async sendVerificationCode(phoneNumber, code) {
+        if (!this.isEnabled) {
+            console.log(`Twilio disabled. Verification code for ${phoneNumber}: ${code}`);
+            return { success: false, disabled: true };
+        }
+
         try {
             const message = await this.client.messages.create({
                 body: `Your verification code is: ${code}. This code will expire in 5 minutes.`,
