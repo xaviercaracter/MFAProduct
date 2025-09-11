@@ -4,13 +4,11 @@ const { SessionManager } = require('../middleware/sessionManager');
 const rateLimit = require('express-rate-limit');
 const User = require('../models/User');
 const VerificationCode = require('../models/VerificationCode');
-const TwilioService = require('../services/twilioService');
-const EmailService = require('../services/emailService');
+const NotificationService = require('../services/notificationService');
 const { Op } = require('sequelize');
 
-// Initialize services
-const twilioService = new TwilioService();
-const emailService = new EmailService();
+// Initialize notification service
+const notificationService = new NotificationService();
 
 // Rate limiting for registration attempts
 const registerLimiter = rateLimit({
@@ -48,12 +46,14 @@ router.post('/register', registerLimiter, async (req, res) => {
 
         console.log(`New user registered: ${email}`);
 
-        // Send welcome email
+        // Send welcome message via both SMS and Email
         try {
-            await emailService.sendWelcomeEmail(email, firstName);
-        } catch (emailError) {
-            console.error('Welcome email sending failed:', emailError.message);
-            // Don't fail registration if email fails
+            const formattedPhone = notificationService.twilioService.formatPhoneNumber(phoneNumber);
+            const results = await notificationService.sendWelcomeMessage(email, formattedPhone, firstName);
+            console.log('Welcome message status:', notificationService.getDeliveryStatus(results));
+        } catch (error) {
+            console.error('Welcome message sending failed:', error.message);
+            // Don't fail registration if messaging fails
         }
 
         res.status(201).json({ 
@@ -117,23 +117,19 @@ router.post('/login', loginLimiter, async (req, res) => {
             expiresAt: new Date(Date.now() + 5 * 60 * 1000) // 5 minutes
         });
 
-        // Send verification code via email (fallback to SMS if email fails)
+        // Send verification code via both SMS and Email
         try {
-            await emailService.sendVerificationCode(email, verificationCode, user.firstName);
-            console.log(`Verification code sent via email to ${email}`);
-        } catch (emailError) {
-            console.error('Email sending failed:', emailError.message);
+            const formattedPhone = notificationService.twilioService.formatPhoneNumber(user.phoneNumber);
+            const results = await notificationService.sendVerificationCode(email, formattedPhone, verificationCode, user.firstName);
+            console.log('Verification code status:', notificationService.getDeliveryStatus(results));
             
-            // Fallback to SMS if available
-            try {
-                const formattedPhone = twilioService.formatPhoneNumber(user.phoneNumber);
-                await twilioService.sendVerificationCode(formattedPhone, verificationCode);
-                console.log(`Verification code sent via SMS to ${formattedPhone} (email fallback)`);
-            } catch (smsError) {
-                console.error('SMS fallback also failed:', smsError.message);
-                // Still log the code for development/testing
-                console.log(`Verification code for ${email}: ${verificationCode}`);
+            // If both fail, log the code for development/testing
+            if (!results.sms.success && !results.email.success) {
+                console.log(`Both delivery methods failed. Verification code for ${email}: ${verificationCode}`);
             }
+        } catch (error) {
+            console.error('Verification code sending failed:', error.message);
+            console.log(`Verification code for ${email}: ${verificationCode}`);
         }
 
         res.json({ message: 'Verification code sent' });
@@ -222,23 +218,19 @@ router.post('/resend-code', async (req, res) => {
             expiresAt: new Date(Date.now() + 5 * 60 * 1000) // 5 minutes
         });
 
-        // Send new verification code via email (fallback to SMS if email fails)
+        // Send new verification code via both SMS and Email
         try {
-            await emailService.sendVerificationCode(email, verificationCode, user.firstName);
-            console.log(`New verification code sent via email to ${email}`);
-        } catch (emailError) {
-            console.error('Email sending failed:', emailError.message);
+            const formattedPhone = notificationService.twilioService.formatPhoneNumber(user.phoneNumber);
+            const results = await notificationService.sendVerificationCode(email, formattedPhone, verificationCode, user.firstName);
+            console.log('Resend verification code status:', notificationService.getDeliveryStatus(results));
             
-            // Fallback to SMS if available
-            try {
-                const formattedPhone = twilioService.formatPhoneNumber(user.phoneNumber);
-                await twilioService.sendVerificationCode(formattedPhone, verificationCode);
-                console.log(`New verification code sent via SMS to ${formattedPhone} (email fallback)`);
-            } catch (smsError) {
-                console.error('SMS fallback also failed:', smsError.message);
-                // Still log the code for development/testing
-                console.log(`New verification code for ${email}: ${verificationCode}`);
+            // If both fail, log the code for development/testing
+            if (!results.sms.success && !results.email.success) {
+                console.log(`Both delivery methods failed. New verification code for ${email}: ${verificationCode}`);
             }
+        } catch (error) {
+            console.error('Resend verification code sending failed:', error.message);
+            console.log(`New verification code for ${email}: ${verificationCode}`);
         }
 
         res.json({ message: 'New verification code sent' });
